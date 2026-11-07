@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "dataset_id": "KREI_FOOD_SERVICE_2025_BEVERAGE_5622",
+  "title": "2025 외식업체 경영실태 조사: 비알코올 음료점업",
+  "publication_year": 2025,
+  "reference_year": 2024,
+  "report_published_at": "2026-02-28",
+  "institution": "농림축산식품부 · 한국농촌경제연구원",
+  "industry_code": "5622",
+  "industry_name": "비알코올 음료점업 (커피전문점 + 기타 비알코올 음료점업)",
+  "sub_industries": ["56221 커피 전문점", "56229 기타 비알코올 음료점업"],
+  "status": "reference_only",
+  "status_reason": "커피전문점 단독 손익이 아닌 상위 업종 통계이며, 시뮬레이터 원가 분류와 비용 정의가 다름",
+  "business_count_population": {"coffee": 106452, "other_beverage": 16127, "year": 2023},
+  "source": {
+    "landing_url": "https://www.mafra.go.kr/bbs/home/798/577154/artclView.do",
+    "pdf_url": "https://www.mafra.go.kr/bbs/home/798/595246/download.do",
+    "page": "인쇄 321~322쪽 (PDF 343~344쪽)",
+    "table_ids": ["표 3-16-1", "표 3-16-2", "표 3-16-3"]
+  },
+  "unit": "만원/사업체·연",
+  "notes": [
+    "비율은 보고서 제시값이며, 연간 평균액을 단순히 나눈 비율과 반올림 차이가 있을 수 있음",
+    "세금·대표자 인건비·가족 종사자 인건비를 포함한 보고서 손익구조와 기존 BizLab 모형은 동일하지 않음",
+    "업체 유형별 비교 수치는 업종 5622 전체 기준; 커피 전문점 단독 자료가 아님",
+    "공개 게시물의 이용허락 표시가 혼재해 있으므로 상업적 재사용 및 원본 재배포는 별도 확인 필요"
+  ],
+  "segments": {
+    "all": {"name": "전체", "sample_n": 352, "annual_sales_manwon": 19033, "annual_profit_manwon": 1725, "operating_margin_pct": 9.1,
+      "costs": {"food": {"manwon": 7407, "pct": 38.9}, "hired_labor": {"manwon": 3018, "pct": 15.9}, "rent": {"manwon": 1625, "pct": 8.5}, "taxes": {"manwon": 1125, "pct": 5.9}, "family_labor": {"manwon": 490, "pct": 2.6}, "owner_labor": {"manwon": 2539, "pct": 13.3}, "other": {"manwon": 1104, "pct": 5.8}}},
+    "franchise": {"name": "프랜차이즈", "sample_n": 140, "annual_sales_manwon": 31160, "annual_profit_manwon": 2591, "operating_margin_pct": 8.3,
+      "costs": {"food": {"manwon": 12372, "pct": 39.7}, "hired_labor": {"manwon": 6398, "pct": 20.5}, "rent": {"manwon": 2464, "pct": 7.9}, "taxes": {"manwon": 1808, "pct": 5.8}, "family_labor": {"manwon": 688, "pct": 2.2}, "owner_labor": {"manwon": 3224, "pct": 10.3}, "other": {"manwon": 1615, "pct": 5.2}}},
+    "independent": {"name": "비프랜차이즈", "sample_n": 212, "annual_sales_manwon": 13760, "annual_profit_manwon": 1348, "operating_margin_pct": 9.8,
+      "costs": {"food": {"manwon": 5248, "pct": 38.1}, "hired_labor": {"manwon": 1548, "pct": 11.3}, "rent": {"manwon": 1260, "pct": 9.2}, "taxes": {"manwon": 828, "pct": 6.0}, "family_labor": {"manwon": 404, "pct": 2.9}, "owner_labor": {"manwon": 2241, "pct": 16.3}, "other": {"manwon": 881, "pct": 6.4}}}
+  },
+  "cost_labels": {"food": "식재료비", "hired_labor": "고용인 인건비", "rent": "임차료", "taxes": "세금", "family_labor": "가족 종사자 인건비", "owner_labor": "대표자 인건비", "other": "기타"}
+}
