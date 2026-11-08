@@ -1,5 +1,6 @@
-"""BizLab v0.7 — source-based cafe economics with an editable scenario."""
+"""BizLab v0.8 — source-based cafe economics with an editable scenario."""
 from html import escape
+from investment_model import INVESTMENT_LABELS, validate_investment, project_cashflows, debt_schedule, monthly_discount_rate
 import pandas as pd
 import streamlit as st
 from benchmark_data import load_benchmark, load_source_register, validate_benchmark
@@ -104,7 +105,7 @@ with tab_main:
     avg = benchmark_monthly(segment)
     st.markdown('<span class="biz-pill">2025년 조사 · 공식 통계로 초기값 설정</span>', unsafe_allow_html=True)
     st.caption("적용 시 월 영업비용은 해당 집단의 사업체당 평균 연간 비용을 12로 나눈 금액이에요. 고객 수는 공식 조사값이 아닌 객단가·영업일수로 역산한 추정치예요.")
-    if st.button("↺  업종 평균으로 다시 설정", use_container_width=False, on_click=reset_from_benchmark):
+    if st.button("↺  업종 평균으로 다시 설정", width="content", on_click=reset_from_benchmark):
         pass
 
     st.markdown('<div class="biz-section">02  내 가게 조건을 입력해요</div>', unsafe_allow_html=True)
@@ -223,7 +224,7 @@ with tab_main:
             "내 예상": [f"{sim_with_owner.revenue_won/10000:,.0f}만원", f"{sim_with_owner.profit_won/10000:,.0f}만원", f"{sim_with_owner.margin_pct:.1f}%" if sim_with_owner.margin_pct is not None else "—"],
             "차이": [f"{comparison_with_owner['sales_diff_manwon']:+,.0f}만원", f"{comparison_with_owner['profit_diff_manwon']:+,.0f}만원", f"{comparison_with_owner['margin_diff_pp']:+.1f}%p" if comparison_with_owner['margin_diff_pp'] is not None else "—"],
         })
-        st.dataframe(compare_df, hide_index=True, use_container_width=True)
+        st.dataframe(compare_df, hide_index=True, width="stretch")
         st.markdown('<p class="biz-quiet">※ 차이는 업종 평균 대비 내 입력 조건의 산술적 차이이며, 우수·열위 판단이나 수익 달성 가능성을 보증하지 않아요.</p>',unsafe_allow_html=True)
     with b:
         chart=pd.DataFrame({"업종 평균": [avg["sales"],avg["profit"]], "내 예상": [sim_with_owner.revenue_won/10000,sim_with_owner.profit_won/10000]},index=["월매출(만원)","월이익(만원)"])
@@ -240,7 +241,187 @@ with tab_main:
             rr=simulate(count,st.session_state["biz_ticket"],st.session_state["biz_days"],st.session_state["biz_food_pct"],monthly_costs, include_owner_labor=include_owner,
                    other_variable_share_pct=variable_share, reference_sales_manwon=reference_sales)
             scenario_rows.append({"시나리오":name,"결제 건수/일":count,"월매출(만원)":round(rr.revenue_won/10000,1),"월 잔여금액(만원)":round(rr.profit_won/10000,1)})
-        st.dataframe(pd.DataFrame(scenario_rows),hide_index=True,use_container_width=True)
+        st.dataframe(pd.DataFrame(scenario_rows),hide_index=True,width="stretch")
+
+    st.markdown('<div class="biz-section">08  창업에 얼마가 필요할까요?</div>', unsafe_allow_html=True)
+    st.caption("초기 투자비의 검증된 업종 평균값은 아직 없어요. 모든 금액은 직접 입력하며, 0원은 '미입력'일 수 있어요.")
+
+    def fill_example_investment():
+        example = {'deposit':2000.0,'premium':500.0,'interior':1800.0,'equipment':1200.0,
+                   'franchise_fee':0.0,'inventory':200.0,'opening_other':100.0,'working_capital':500.0}
+        for key,value in example.items():
+            st.session_state[f'inv_{key}'] = value
+
+    st.button('예시 투자비로 채우기 · 실제 평균 아님', on_click=fill_example_investment,
+              help='설명용 숫자이며 공식 통계나 창업 견적이 아닙니다.')
+    with st.expander('초기 투자금 항목별 입력', expanded=True):
+        invest_cols = st.columns(2, gap='large')
+        for idx, (key, label) in enumerate(INVESTMENT_LABELS.items()):
+            with invest_cols[idx % 2]:
+                st.number_input(label+' · 만원', min_value=0.0, max_value=1000000.0,
+                                value=0.0, step=100.0, format='%.1f', key=f'inv_{key}')
+        st.caption('임대보증금·운전자금은 초기 필요자금에 포함되며, 별도 회수 설정을 하지 않으면 돌려받지 않는 것으로 계산해요. 초도 재고와 운전자금에 같은 금액을 중복 기재하지 마세요.')
+
+    inv_items={key:float(st.session_state[f'inv_{key}']) for key in INVESTMENT_LABELS}
+    total_capital=validate_investment(inv_items)
+    st.markdown(card('창업에 필요한 총자금', f'{total_capital:,.0f}만원',
+                     '자기자본 + 대출로 조달할 총금액 · 보증금과 운영자금 포함'), unsafe_allow_html=True)
+
+    st.markdown('<div class="biz-section">09  대출을 이용하나요?</div>', unsafe_allow_html=True)
+    st.toggle('대출 반영', value=False, key='inv_loan_on')
+    loan_amount=0.0
+    loan_rate=0.0
+    loan_term=60
+    loan_method='annuity'
+    if st.session_state['inv_loan_on'] and total_capital <= 0:
+        st.info('먼저 초기 투자비를 입력해 주세요. 대출금은 총 필요자금을 초과할 수 없어요.')
+    if st.session_state['inv_loan_on'] and total_capital > 0:
+        if st.session_state.get('inv_loan_amount',0) > total_capital:
+            st.session_state['inv_loan_amount'] = total_capital
+        lcol1,lcol2=st.columns(2)
+        with lcol1:
+            loan_amount=st.number_input('대출금 · 만원',min_value=0.0,max_value=float(total_capital),
+                                        value=0.0,step=100.0, key='inv_loan_amount')
+            loan_term=st.number_input('상환기간 · 개월',min_value=1,max_value=600,value=60,step=12,key='inv_loan_term')
+        with lcol2:
+            loan_rate=st.number_input('연간 대출금리 · %',min_value=0.0,max_value=100.0,value=5.0,
+                                      step=0.5, format='%.1f',key='inv_loan_rate')
+            loan_method=st.selectbox('상환방식',['annuity','equal_principal'],
+                                     format_func=lambda x:{'annuity':'원리금균등','equal_principal':'원금균등'}[x],key='inv_loan_method')
+        st.caption('연 5%는 편집 가능한 설명용 시작 가정입니다. 실제 대출 제안금리가 아니에요. 원금상환은 영업비용이 아닌 금융 현금유출로만 반영합니다.')
+
+    st.markdown('<div class="biz-section">10  투자금은 언제 회수될까요?</div>', unsafe_allow_html=True)
+    st.caption('아래 추정 현금흐름은 월 잔여이익을 출발점으로 삼는 간소화 모델입니다. 감가상각, 부가세·소득세 정산, 재고 변화가 정확히 식별된 현금흐름은 아니에요.')
+    use_owner_cf=st.toggle('투자회수 계산 시 대표자 보상을 차감해요', value=True,key='inv_owner_cash',
+                            help='대표자 보상 차감 전/후 현금흐름이 달라집니다. 보상 미차감은 본인 노동비용이 없다는 의미가 아닙니다.')
+    term_sim = sim_with_owner if use_owner_cf else sim_before_owner
+    monthly_cash_proxy=term_sim.profit_won/10000
+    assumptions_left,assumptions_right=st.columns(2)
+    with assumptions_left:
+        horizon=st.selectbox('분석기간', [60,84,120], index=0,
+                             format_func=lambda n:f'{n//12}년 · {n}개월', key='inv_horizon')
+        reserve=st.number_input('월 유지·교체 설비 투자 · 만원',min_value=0.0,max_value=100000.0,
+                                 value=0.0,step=5.0,key='inv_reserve',
+                                 help='실제 발생할 것으로 예상하는 추가 현금지출만 입력하세요. 이미 기타운영비에 포함돼 있으면 중복 입력하지 마세요.')
+    with assumptions_right:
+        return_month=st.selectbox('보증금 회수 시점', [0,12,24,36,48,60,84,120],index=0,
+                                 format_func=lambda n:'회수 미반영' if n==0 else f'{n}개월째',key='inv_deposit_month')
+        return_pct=st.number_input('보증금 회수율 · %',min_value=0.0,max_value=100.0,
+                                   value=100.0,step=5.0,key='inv_deposit_pct')
+    if return_month>horizon:
+        st.warning('보증금 회수 시점이 분석기간 이후라서 이번 기간에는 회수하지 않는 것으로 계산해요.')
+    deposit_month = return_month if return_month <= horizon else 0
+
+    with st.expander('고급 투자분석 · 할인율과 추가 현금흐름', expanded=False):
+        st.caption('대출금리와 할인율은 다릅니다. 할인율은 사용자가 선택하는 요구수익률이며, 사업 전체와 자기자본에 각각 적합한 할인율을 설정할 수 있어요.')
+        advanced_cols=st.columns(2)
+        with advanced_cols[0]:
+            project_rate=st.number_input('사업 전체 할인율 · 연 %', min_value=0.0,max_value=100.0,
+                                          value=8.0,step=0.5,key='inv_project_discount')
+            wc_return=st.selectbox('초기 운영자금 회수 시점',[0,12,24,36,48,60,84,120],index=0,
+                                   format_func=lambda n:'회수 미반영' if n==0 else f'{n}개월째',key='inv_wc_month')
+            wc_pct=st.number_input('운영자금 회수율 · %',min_value=0.0,max_value=100.0,
+                                   value=100.0,step=5.0,key='inv_wc_pct')
+        with advanced_cols[1]:
+            equity_rate=st.number_input('자기자본 할인율 · 연 %', min_value=0.0,max_value=100.0,
+                                         value=10.0,step=0.5,key='inv_equity_discount')
+            capex_month=st.selectbox('일회성 추가 설비투자 시점',[0,12,24,36,48,60,84,120],index=0,
+                                     format_func=lambda n:'추가 투자 없음' if n==0 else f'{n}개월째',key='inv_extra_capex_month')
+            capex_amount=st.number_input('일회성 추가 설비투자 · 만원',min_value=0.0,max_value=100000.0,
+                                         value=0.0,step=100.0,key='inv_extra_capex_amount')
+        st.caption('NPV는 분석기간 내 명시적으로 입력한 현금흐름만 할인합니다. 영업권·시설 잔존가치·매각대금은 자동 가산하지 않아요.')
+    # Values persist even if expander collapsed; widgets run on every rerun.
+    wc_month=wc_return if wc_return<=horizon else 0
+    cap_month=capex_month if capex_month<=horizon else 0
+    result=project_cashflows(inv_items, monthly_cash_proxy, loan_manwon=loan_amount,
+                             loan_rate_pct=loan_rate,loan_months=loan_term,loan_method=loan_method,
+                             horizon_months=horizon,project_discount_pct=project_rate,
+                             equity_discount_pct=equity_rate,deposit_return_month=deposit_month,
+                             deposit_return_pct=return_pct,working_capital_return_month=wc_month,
+                             working_capital_return_pct=wc_pct,
+                             monthly_maintenance_capex=reserve,
+                             one_time_capex_month=cap_month,one_time_capex_amount=capex_amount)
+    def pbp_label(months):
+        if total_capital==0: return '투자비 입력 필요'
+        return f'{months}개월' if months is not None else '분석기간 내 미회수'
+    if total_capital==0:
+        st.info('초기 투자비를 입력하면 투자회수기간을 계산해요. 예시 입력 버튼으로 기능을 체험할 수도 있어요.')
+    stat_cols=st.columns(3)
+    stat_cols[0].metric('초기 자기자본',f'{result.equity_capital:,.0f}만원')
+    stat_cols[1].metric('월 운영현금 대용치',f'{monthly_cash_proxy:,.1f}만원',help='현재 비용모델의 잔여액입니다. 검증된 실제 현금흐름은 아니에요.')
+    stat_cols[2].metric('추정 단순 PBP · 사업 전체',pbp_label(result.business_pbp))
+    if loan_amount:
+        dsum=debt_schedule(loan_amount,loan_rate,loan_term,loan_method)
+        st.caption(f'첫 달 대출 원리금 상환 {dsum[0]["payment"]:,.1f}만원 · 이자 {dsum[0]["interest"]:,.1f}만원 / 원금 {dsum[0]["principal_paid"]:,.1f}만원')
+        if result.balance_at_horizon>0:
+            st.warning(f'분석기간 종료 시 미상환 대출원금 {result.balance_at_horizon:,.1f}만원이 남아요. 자동 상환·매각가치를 가정하지 않았으므로 자기자본 NPV 해석에 주의하세요.')
+    summary=pd.DataFrame([
+        {'구분':'사업 전체','투입자금(만원)':round(result.total_capital,1),
+         '일반 PBP':pbp_label(result.business_pbp),'할인 PBP':pbp_label(result.business_discounted_pbp),
+         'NPV(만원)':round(result.business_npv,1),'할인율':f'{project_rate:.1f}%'},
+        {'구분':'자기자본','투입자금(만원)':round(result.equity_capital,1),
+         '일반 PBP':pbp_label(result.equity_pbp),'할인 PBP':pbp_label(result.equity_discounted_pbp),
+         'NPV(만원)':round(result.equity_npv,1),'할인율':f'{equity_rate:.1f}%'}])
+    with st.expander('할인 PBP · NPV 등 투자 분석 결과',expanded=False):
+        st.dataframe(summary,hide_index=True,width='stretch')
+        st.caption('NPV는 0개월 초기 현금유출과 매월 말의 현금흐름을 연 유효 할인율에서 환산한 월 할인율로 할인해 계산해요. PBP는 월별 최초 회수 시점(정수 개월)입니다.')
+        if total_capital>0:
+            pr=monthly_discount_rate(project_rate)
+            er=monthly_discount_rate(equity_rate)
+            cb,ce=-result.total_capital,-result.equity_capital
+            pv_rows=[{'개월':0,'사업 전체 할인누적':cb,'자기자본 할인누적':ce}]
+            for rr in result.rows:
+                t=rr['month']
+                cb += rr['business_cf']/((1+pr)**t)
+                ce += rr['equity_cf']/((1+er)**t)
+                pv_rows.append({'개월':t,'사업 전체 할인누적':cb,'자기자본 할인누적':ce})
+            st.markdown('**누적 할인 현금흐름 · 만원**')
+            st.line_chart(pd.DataFrame(pv_rows).set_index('개월'),color=['#3182F6','#8B95A1'])
+
+    if total_capital>0:
+        curves=pd.DataFrame([{'개월':0,'사업 전체':-total_capital,'자기자본':-result.equity_capital}]+[
+            {'개월':r['month'],'사업 전체':r['cumulative_business'],'자기자본':r['cumulative_equity']}
+            for r in result.rows]).set_index('개월')
+        st.markdown('**누적 현금흐름 · 만원**')
+        st.line_chart(curves,color=['#3182F6','#8B95A1'])
+        with st.expander('월별 현금흐름표 · 검증하기'):
+            flow_df=pd.DataFrame(result.rows)
+            flow_df.insert(1,'매출 유입(모델)',round(term_sim.revenue_won/10000,2))
+            flow_df.insert(2,'영업비용 유출(모델)',round((term_sim.fixed_won+term_sim.variable_won)/10000,2))
+            st.dataframe(flow_df.rename(columns={
+                'month':'개월','operating_cash':'운영현금 대용치','maintenance_capex':'유지투자',
+                'extra_capex':'추가투자','deposit_return':'보증금 반환','working_capital_return':'운전자금 회수',
+                'loan_interest':'이자','loan_principal':'원금상환','loan_payment':'대출상환액',
+                'loan_balance':'대출잔액','business_cf':'사업 CF','equity_cf':'자기자본 CF',
+                'cumulative_business':'누적 사업 CF','cumulative_equity':'누적 자기자본 CF'}),hide_index=True,width='stretch')
+    st.markdown('<div class="biz-section">11  고객 수가 달라지면 투자회수도 달라질까요?</div>',unsafe_allow_html=True)
+    st.caption('비관·기준·낙관은 통계 전망이 아니라 사용자가 설정한 고객 수 변화에 따른 가상 비교예요.')
+    low,high=st.columns(2)
+    with low: loss=st.slider('비관 · 고객 감소(%)',0,80,25,5,key='inv_loss')
+    with high: gain=st.slider('낙관 · 고객 증가(%)',0,100,25,5,key='inv_gain')
+    scenario_analysis=[]
+    for title,customers in [('비관',round(st.session_state['biz_customers']*(1-loss/100))),
+                             ('기준',st.session_state['biz_customers']),
+                             ('낙관',round(st.session_state['biz_customers']*(1+gain/100)))]:
+        s=simulate(customers,st.session_state['biz_ticket'],st.session_state['biz_days'],
+                   st.session_state['biz_food_pct'],monthly_costs,include_owner_labor=use_owner_cf,
+                   other_variable_share_pct=variable_share,reference_sales_manwon=reference_sales)
+        p=project_cashflows(inv_items,s.profit_won/10000,loan_manwon=loan_amount,
+                            loan_rate_pct=loan_rate,loan_months=loan_term,loan_method=loan_method,
+                            horizon_months=horizon,project_discount_pct=project_rate,
+                            equity_discount_pct=equity_rate,deposit_return_month=deposit_month,
+                            deposit_return_pct=return_pct,working_capital_return_month=wc_month,
+                            working_capital_return_pct=wc_pct,monthly_maintenance_capex=reserve,
+                            one_time_capex_month=cap_month,one_time_capex_amount=capex_amount)
+        scenario_analysis.append({'시나리오':title,'하루 결제 건수':customers,
+            '월매출(만원)':round(s.revenue_won/10000,1),
+            '월비용(만원)':round((s.fixed_won+s.variable_won)/10000,1),
+            '월 잔여이익(만원)':round(s.profit_won/10000,1),
+            '사업 현금흐름 대용치(만원)':round(s.profit_won/10000-reserve,1),
+            '손익분기(건/일)':s.break_even_customers if s.break_even_customers is not None else '도달 불가',
+            '사업 PBP':pbp_label(p.business_pbp),'자기자본 PBP':pbp_label(p.equity_pbp)})
+    st.dataframe(pd.DataFrame(scenario_analysis),hide_index=True,width='stretch')
+    st.info('해석 시 주의: 공공 통계의 세금·공과·대표자 인건비와 실제 세후 현금흐름은 다를 수 있어요. 따라서 PBP·NPV는 확정적인 수익 전망이 아닌 사용자 가정 기반 추정치입니다.')
 
     st.markdown('<p class="biz-quiet">모델 주의: 식재료비와 사용자가 선택한 기타비용 일부를 매출 연동 비용으로 처리하고, 나머지는 시뮬레이션 범위 내에서 월 정액으로 처리합니다. 실제 운영에서는 결제수수료·배달비·인건비 등이 매출에 따라 변할 수 있으며, 대표자 인건비를 제외한 결과는 엄밀한 영업이익이 아니라 차감 전 잔여금액이며, 실제 현금흐름과 다를 수 있어요. 모든 금액의 부가세 기준을 통일해야 합니다.</p>',unsafe_allow_html=True)
 
@@ -255,7 +436,7 @@ with tab_data:
     cc.metric("영업이익률",f"{dat['operating_margin_pct']:.1f}%")
     st.markdown("**평균 비용 구조**")
     detail=pd.DataFrame([{"비용 항목":benchmark['cost_labels'][k],"연간 평균(만원)":item['manwon'],"월 환산(만원)":round(item['manwon']/12,1),"매출 대비(%)":item['pct']} for k,item in dat['costs'].items()])
-    st.dataframe(detail,hide_index=True,use_container_width=True)
+    st.dataframe(detail,hide_index=True,width="stretch")
     st.caption("공식 조사에서 산출한 각 항목의 평균이며, 표본 352개(전체)·140개(프랜차이즈)·212개(비프랜차이즈). 분류별 수치는 커피 전문점 단독이 아닙니다.")
     st.link_button("공식 조사 보고서 보기 ↗",benchmark['source']['pdf_url'])
     with st.expander("이 자료가 모든 카페를 대표하나요?"):
@@ -265,7 +446,7 @@ with tab_source:
     st.markdown('<div class="biz-section">왜 이 데이터를 선택했나요?</div>',unsafe_allow_html=True)
     st.caption("공식성, 업종의 일치도, 비용 항목의 정합성, 업데이트 및 접근성을 기준으로 검토했어요. 언론 인용 빈도는 검증 자료가 없어 순위를 매기지 않았어요.")
     sources_df=pd.DataFrame([{"출처":x['name'],"제공 정보":x['metric_scope'],"상태":{"reference_only":"참고 채택","approved":"승인","pending":"후속 검증"}[x['state']]} for x in register['sources']])
-    st.dataframe(sources_df,hide_index=True,use_container_width=True)
+    st.dataframe(sources_df,hide_index=True,width="stretch")
     ix=st.selectbox("출처별 근거 확인",range(len(register['sources'])),format_func=lambda i:register['sources'][i]['name'])
     source=register['sources'][ix]
     st.markdown(f"**선정 목적**  \n{source['selection']}")
@@ -282,4 +463,4 @@ with tab_source:
 - 원본 보고서 인용과 데이터의 상업적 재배포는 별도 이용 조건 확인이 필요합니다.""")
 
 st.divider()
-st.markdown('<p class="biz-quiet">BIZLAB v0.7 · 공식 업종 통계 기반 시뮬레이션 · 초기값은 추정 출발점이며 실제 창업 수익을 보증하지 않습니다.</p>',unsafe_allow_html=True)
+st.markdown('<p class="biz-quiet">BIZLAB v0.8 · 공식 업종 통계 기반 시뮬레이션 · 초기값은 추정 출발점이며 실제 창업 수익을 보증하지 않습니다.</p>',unsafe_allow_html=True)
