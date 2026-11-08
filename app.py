@@ -5,6 +5,16 @@ import streamlit as st
 from benchmark_data import load_benchmark, load_source_register, validate_benchmark
 from model_v05 import COST_KEYS, COST_LABELS, recommended_inputs, simulate, benchmark_monthly, comparison
 
+# 배포 시 오래된 model_v05.py와 새 app.py가 섞이는 문제를 사용자에게 명확히 안내합니다.
+from inspect import signature
+_required = {"include_owner_labor", "other_variable_share_pct", "reference_sales_manwon"}
+_missing = _required - set(signature(simulate).parameters)
+if _missing:
+    st.error("BizLab 파일 버전이 일치하지 않습니다. GitHub 저장소 최상위의 "
+             "model_v05.py를 v0.7 전체 배포본으로 덮어쓰고 Push origin을 실행해 주세요.")
+    st.code("simulate()에서 누락된 인자: " + ", ".join(sorted(_missing)))
+    st.stop()
+
 st.set_page_config(page_title="BizLab | 카페 수익 분석", page_icon="📊", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
 <style>
