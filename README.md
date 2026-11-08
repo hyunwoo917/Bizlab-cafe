@@ -1,4 +1,4 @@
-# BizLab v0.5 — Cafe Insights
+# BizLab v0.6 — Cafe Insights
 
 Source-based, editable cafe economics simulator with a clean, accessible, mobile-friendly interface.
 
@@ -18,9 +18,18 @@ Upload **all files and directories** in this project to the root of the existing
 - Individual / franchise / combined => monthly cost initial values from the associated 2025 KREI/MaFRA report category; costs are the report's **average annual KRW 10k amounts / 12**.
 - Food-cost percentage copies the official 'food cost as % of sales' ratio.
 - Initial monthly sales reference = official category's annual per-business sales / 12.
-- **Customers are NOT an observed mean**. Daily customer count = official average monthly sales / (assumed ticket KRW 6,500 x assumed monthly opening days 30), rounded.
+- **Customers are NOT an observed mean**. Daily payment transaction estimate = official average monthly sales / (assumed ticket KRW 6,500 x assumed monthly opening days 30), rounded.
 - All user fields are editable; select a new group or hit Reset to return to the new group's defaults.
 - Comparison reports the user's forecast against the category's independent official mean values. It is an arithmetic reference, **not a performance ranking**.
+
+## v0.6: Monthly costs and proprietor compensation
+
+- Monthly total cost = food cost estimated from current revenue + sum of all six monthly reported expense categories.
+- **Monthly fixed-treated cost** is a simulator assumption, NOT an official published fixed-cost statistic. Tax, labor and overhead may vary with volume.
+- Shows the full expense breakdown; editable values immediately update all outputs.
+- A toggle selects whether to deduct the proprietor's modeled labor compensation. Both pre- and post-compensation residual profit, and corresponding break-even transaction counts, appear side-by-side.
+- Benchmark operating-profit comparisons ALWAYS use the post-proprietor-cost scenario, to keep the cost-category scope consistent. The pre-proprietor view is a residual amount, not the same operating-profit definition.
+- Daily transactions derived from revenue/ticket are estimates and must not be described as surveyed foot traffic.
 
 ## Accounting and methodological limits
 
