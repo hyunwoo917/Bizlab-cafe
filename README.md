@@ -1,46 +1,51 @@
-# BizLab v0.6 — Cafe Insights
+# BizLab v0.7 — 카페 비용구조 개선
 
-Source-based, editable cafe economics simulator with a clean, accessible, mobile-friendly interface.
+## 이번 버전에서 바뀐 점
 
-## Local run (Windows, VS Code)
+1. **고용인 + 가족 종사자 인건비 통합:** 입력창에 '직원 인건비' 한 항목으로 표시하며, 원본 데이터(`data/benchmarks.json`)는 분리된 그대로 보존합니다. 대표자 인건비는 별도 유지합니다.
+2. **고정비/변동비 분리:** 식재료비는 매출 비율, 그 외 원본 비용은 월 환산 금액으로 시작합니다.
+3. **기타 운영비 재분류:** '기타 운영비 중 매출 연동으로 볼 비율' 0~100%를 설정할 수 있습니다. 기타비용 **총액을 추가하지 않고**, 일부를 고정 처리 비용에서 빼서 매출 연동 비용으로 이동합니다. 선택 업종의 **공식 월평균 매출**을 분모로 하여 변동비율로 환산합니다. 초기 설정은 0%이며, 자료에 직접 관측된 변동비율이 **아닙니다**.
+4. **수익 계산 비교:** 대표자 보상 포함/제외, 손익분기 결제 건수, 공식 업종 전체 수치와 본인 시나리오 간 차이 등을 표시합니다.
+5. **출처 기록:** 현재 기준은 비알코올 음료점업(5622) 전체 통계입니다. *커피 전문점(56221) 단독 평균*이라고 표시하지 않습니다.
+
+## 설치 및 로컬 실행
 
 ```powershell
 py -m pip install -r requirements.txt
 py -m streamlit run app.py
 ```
 
-## Deploy to existing Streamlit Cloud app
-
-Upload **all files and directories** in this project to the root of the existing GitHub repository. Preserve `.streamlit/config.toml`, `data/benchmarks.json`, `data/sources.json`, `model_v05.py`, and `benchmark_data.py`. Streamlit Cloud main file remains `app.py`. After pushing changes, hard-refresh the app.
-
-## What happens when you choose a category?
-
-- Individual / franchise / combined => monthly cost initial values from the associated 2025 KREI/MaFRA report category; costs are the report's **average annual KRW 10k amounts / 12**.
-- Food-cost percentage copies the official 'food cost as % of sales' ratio.
-- Initial monthly sales reference = official category's annual per-business sales / 12.
-- **Customers are NOT an observed mean**. Daily payment transaction estimate = official average monthly sales / (assumed ticket KRW 6,500 x assumed monthly opening days 30), rounded.
-- All user fields are editable; select a new group or hit Reset to return to the new group's defaults.
-- Comparison reports the user's forecast against the category's independent official mean values. It is an arithmetic reference, **not a performance ranking**.
-
-## v0.6: Monthly costs and proprietor compensation
-
-- Monthly total cost = food cost estimated from current revenue + sum of all six monthly reported expense categories.
-- **Monthly fixed-treated cost** is a simulator assumption, NOT an official published fixed-cost statistic. Tax, labor and overhead may vary with volume.
-- Shows the full expense breakdown; editable values immediately update all outputs.
-- A toggle selects whether to deduct the proprietor's modeled labor compensation. Both pre- and post-compensation residual profit, and corresponding break-even transaction counts, appear side-by-side.
-- Benchmark operating-profit comparisons ALWAYS use the post-proprietor-cost scenario, to keep the cost-category scope consistent. The pre-proprietor view is a residual amount, not the same operating-profit definition.
-- Daily transactions derived from revenue/ticket are estimates and must not be described as surveyed foot traffic.
-
-## Accounting and methodological limits
-
-The model makes food costs variable with sales and provisionally models the other 6 official expense categories as fixed monthly costs. This is a modeling shortcut, not a claim that actual taxes, labor, packaging, card fees and overhead are fixed. It can overstate or understate profits in non-average revenue scenarios. The official report includes proprietor/family labor in expenses; their cash flow interpretation may differ. Consistent VAT treatment is essential. The 5622 category includes coffee shops and other non-alcoholic beverage shops. Restaurant-specific benchmarks are not asserted.
-
-Source: `2025 외식업체 경영실태 조사`, Table 3-16-1 to 3-16-3 (printed pp. 321–322), https://www.mafra.go.kr/bbs/home/798/595246/download.do. `data/benchmarks.json` and `data/sources.json` preserve source registry and review caveats. Automated API updates are *not* built yet. Commercial reuse permissions should be verified separately.
-
-## Tests
+테스트(인터넷 불필요):
 
 ```powershell
-py -m unittest discover -p "test_*.py" -v
+py -m unittest discover -v
 ```
 
-Design inspiration: Toss's publicly described Product Principles (simplicity, value first, clear action and explanation). This is a distinct BizLab design, not an official Toss interface or a copy of Toss proprietary assets.
+## 계산식과 한계
+
+- `월매출 = 하루 결제 건수 × 객단가(원) × 월 영업일`
+- `변동비율 = 통계 식재료비율 + (기타 운영비 월 금액 × 재분류 비중 ÷ 공식 업종 월평균 매출)`
+- `고정 처리 월 비용 = 통계 비용의 월 환산 총액 - 기타 운영비 재분류 월 금액` (대표자 인건비 포함 여부 선택)
+- `모델 월 손익 = 월매출 × (1 - 변동비율) - 월 고정 처리 비용`
+- `손익분기 결제 건수 = 고정 처리 비용 ÷ [객단가 × 월 영업일 × (1-변동비율)]` 올림
+
+**재분류 비중을 높인다고 새로운 수수료 금액이 생기는 것은 아닙니다.** 가정한 기준 매출에서 비용총액은 보존하되, 매출이 변경될 때 비용의 움직임만 달라집니다.
+
+세금·공과, 인건비, 공공요금 등의 고정·변동 구분은 실제 점포마다 달라집니다. 식재료비가 총변동비의 전부가 아니고, '기타'의 항목별 내역도 공식 표만으로 확인되지 않습니다. 이 앱은 **모델 가정이 포함된 참고용 계산기**이며 현금흐름 또는 세법상 영업이익을 보장하지 않습니다.
+
+## 데이터 근거
+
+- 농림축산식품부·한국농촌경제연구원 「2025 외식업체 경영실태 조사 보고서」, 2024년 실적, 비알코올 음료점업(5622)
+- 조사표: 표 3-16-1 ~ 3-16-3, 보고서 321~322쪽
+- 직접 링크 및 원본 제한사항: `data/benchmarks.json` 및 `data/sources.json`
+- 선택 업종: 비프랜차이즈 / 프랜차이즈 / 전체
+- 기준값 업데이트는 자동 연결되지 않습니다. 이용허락 조건도 별도 확인이 필요합니다.
+
+## GitHub Desktop 배포
+
+1. `Bizlab-cafe` 저장소를 GitHub Desktop의 **Show in Explorer**로 엽니다.
+2. 이 ZIP의 **파일 및 폴더 내용물**(상위 `BizLab_v0_7` 폴더 자체 제외)을 저장소 최상위에 복사하여 덮어씁니다.
+3. GitHub Desktop의 Changes를 확인한 뒤 `Commit to main` → `Push origin`을 누릅니다.
+4. Streamlit 사이트를 새로고침하여 업종 전환, 비용 변경, 사업주 보상 선택을 테스트합니다.
+
+`__pycache__` 및 `.git` 폴더는 GitHub에 업로드하지 않습니다.

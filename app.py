@@ -1,4 +1,4 @@
-"""BizLab v0.6 — source-based cafe economics with an editable scenario."""
+"""BizLab v0.7 — source-based cafe economics with an editable scenario."""
 from html import escape
 import pandas as pd
 import streamlit as st
@@ -77,7 +77,7 @@ if "biz_segment" not in st.session_state:
     st.session_state["biz_segment"] = "independent"
 if "biz_dirty" not in st.session_state:
     st.session_state["biz_dirty"] = False
-if "biz_customers" not in st.session_state:
+if "biz_customers" not in st.session_state or "biz_staff_labor" not in st.session_state:
     reset_from_benchmark()
 
 st.markdown('<div class="biz-eyebrow">BIZLAB <span style="color:#8B95A1">/ CAFE INSIGHTS</span></div>', unsafe_allow_html=True)
@@ -106,40 +106,57 @@ with tab_main:
     with c:
         st.number_input("한 달 영업일 수", min_value=1, max_value=31, step=1, key="biz_days", help="초기 30일은 사용자 가정입니다.")
 
-    st.markdown('<div class="biz-section">03  비용을 설정해요</div>', unsafe_allow_html=True)
-    st.caption("식재료비는 매출에 비례해 계산합니다. 나머지는 통계의 연간 금액을 월 환산한 뒤 고정 처리하는 가정이며, 항목별 자유 수정이 가능해요.")
-    c1, c2 = st.columns([1,2], gap="large")
-    with c1:
-        st.number_input("식재료비율 · %", min_value=0.0, max_value=100.0, step=0.5, format="%.1f", key="biz_food_pct",
-                        help="공식 통계의 식재료비율만 자동 설정합니다. 총변동비율이나 원재료비 전체를 뜻하지 않습니다.")
-    with c2:
-        with st.expander("직원 인건비 · 임차료 등 세부 비용 변경", expanded=True):
-            left, right = st.columns(2)
-            for index, key in enumerate(COST_KEYS):
-                with (left if index % 2 == 0 else right):
-                    st.number_input(f"{COST_LABELS[key]} · 만원/월", min_value=0.0, max_value=100000.0,
-                                    step=10.0, format="%.1f", key=f"biz_{key}")
-            st.caption("대표자·가족 인건비와 세금도 포함돼 있어요. 실제 현금 유출과 회계상 비용은 다를 수 있습니다.")
+    st.markdown('<div class="biz-section">03  고정비와 변동비를 설정해요</div>', unsafe_allow_html=True)
+    st.caption("공식 통계의 항목별 금액을 월 환산한 초기값이에요. 아래 분류는 BizLab의 계산 가정이며, 공식 통계가 확정한 고정비·변동비 분류가 아니에요.")
+    st.markdown("**매출에 따라 달라지는 비용**")
+    left_var, right_var = st.columns(2, gap="large")
+    with left_var:
+        st.number_input("식재료비율 · %", min_value=0.0, max_value=100.0, step=0.5,
+                        format="%.1f", key="biz_food_pct",
+                        help="공식 업종 식재료비율. 전체 변동비율과는 다릅니다.")
+    with right_var:
+        st.slider("기타 운영비 중 매출 연동으로 분류할 비중 · %", 0, 100,
+                  step=5, key="biz_other_variable_share_pct",
+                  help="기타비용에 매출 연동 비용이 얼마나 들어있는지는 공개 통계에서 확인되지 않았습니다. 직접 설정하는 모델 가정입니다. 기타비용을 추가로 더하지 않고 고정에서 변동으로 옮깁니다.")
+    st.caption("기타 운영비의 매출 연동분은 '선택한 업종의 공식 월평균 매출'을 기준으로 매출 대비 비율로 바꿔요. 처음에는 0%로 설정해 원본 비용총액을 보존하며, 별도의 포장비·수수료를 중복 추가하지 않아요.")
+    st.markdown("**매달 기본적으로 발생한다고 가정하는 비용**")
+    left, right = st.columns(2, gap="large")
+    for index, key in enumerate(COST_KEYS):
+        with (left if index % 2 == 0 else right):
+            st.number_input(f"{COST_LABELS[key]} · 만원/월", min_value=0.0,
+                            max_value=100000.0, step=10.0, format="%.2f", key=f"biz_{key}",
+                            help=("공식 고용인+가족 인건비를 합친 월평균 초기값입니다. 가족의 인원·근무시간을 의미하지 않아요." if key == "staff_labor" else
+                                  "이 금액을 모델에서는 월 정액으로 처리합니다. 실제로 고정 지출이라는 뜻은 아닙니다."))
+    st.caption("직원 인건비에는 고용인과 가족 종사자 인건비를 통합했어요. 대표자 인건비는 아래에서 별도 선택할 수 있어요. '세금·공과'는 회계·세무상 처리가 다른 항목이 포함될 수 있어 실제 비용과 구분이 필요합니다.")
 
     monthly_costs = {k: float(st.session_state[f"biz_{k}"]) for k in COST_KEYS}
+    reference_sales = float(segment["annual_sales_manwon"]) / 12
+    variable_share = float(st.session_state["biz_other_variable_share_pct"])
+    preview = simulate(st.session_state["biz_customers"], st.session_state["biz_ticket"],
+                       st.session_state["biz_days"], st.session_state["biz_food_pct"],
+                       monthly_costs, other_variable_share_pct=variable_share,
+                       reference_sales_manwon=reference_sales)
     st.markdown('<div class="biz-section">04  월 비용을 한눈에 확인해요</div>', unsafe_allow_html=True)
     owner_cost = monthly_costs["owner_labor"]
-    other_monthly_costs = sum(monthly_costs.values()) - owner_cost
-    food_est_manwon = (st.session_state["biz_customers"] * st.session_state["biz_ticket"]
-                       * st.session_state["biz_days"] * st.session_state["biz_food_pct"] / 100 / 10000)
-    ctotal, cowner, cfood = st.columns(3)
-    ctotal.metric("월 비용 합계 (대표자 포함)", f"{other_monthly_costs + owner_cost + food_est_manwon:,.1f}만원",
-                  help="현재 예상 매출에 연동된 식재료비와 월 고정 처리 비용을 모두 합한 값입니다.")
-    cowner.metric("월 고정 처리 비용", f"{other_monthly_costs + owner_cost:,.1f}만원",
-                  help="공식 고정비 통계가 아닌, 시뮬레이션에서 고정으로 처리한 비용의 합계입니다.")
-    cfood.metric("예상 월 식재료비", f"{food_est_manwon:,.1f}만원",
-                 help="현재 예상 매출 × 식재료비율")
-    with st.expander("비용 합계가 어떻게 계산됐나요?", expanded=False):
-        cost_rows = [{"항목": "식재료비 (매출 연동)", "월 비용(만원)": round(food_est_manwon, 1), "계산 방식": "매출 연동"}]
-        cost_rows += [{"항목": COST_LABELS[k], "월 비용(만원)": round(monthly_costs[k], 1), "계산 방식": "월 금액 고정 가정"}
-                      for k in COST_KEYS]
-        st.dataframe(pd.DataFrame(cost_rows), hide_index=True, use_container_width=True)
-        st.caption("여기서 '고정'은 현실의 고정비 분류가 아니라 시뮬레이션 계산 가정입니다. 세금, 인건비, 기타비용은 실제로 변동할 수 있어요.")
+    ctotal, cfixed, cvariable = st.columns(3)
+    ctotal.metric("예상 월 총비용 (대표자 포함)", f"{(preview.fixed_won + preview.variable_won)/10000:,.1f}만원")
+    cfixed.metric("월 고정 처리 비용", f"{preview.fixed_won/10000:,.1f}만원",
+                  help="임차료·인건비·세금·공과·기타비용의 고정 처리분을 합산한 모델 결과입니다.")
+    cvariable.metric("예상 월 변동비", f"{preview.variable_won/10000:,.1f}만원",
+                     help="식재료비와 매출 연동으로 재분류한 기타 운영비의 합계입니다.")
+    with st.expander("비용 분류와 계산 근거 자세히 보기", expanded=False):
+        st.write(f"식재료비율 {st.session_state['biz_food_pct']:.1f}% + 기타 운영비 환산 변동비율 {preview.other_variable_pct:.2f}% = 총 모델 변동비율 **{preview.total_variable_pct:.2f}%**")
+        st.caption(f"기타 운영비 월 {monthly_costs['other']:,.2f}만원 중 {variable_share:.0f}%를 공식 업종 월평균 매출 {reference_sales:,.1f}만원에 나눠 변동비율로 환산합니다. 동일한 비용을 고정비에서 차감해 중복 계산하지 않습니다.")
+        rows = [{"분류":"변동비", "항목":"식재료비", "월 예상(만원)":round(preview.food_won/10000,2)},
+                {"분류":"변동비", "항목":"기타 운영비의 변동 처리분", "월 예상(만원)":round(preview.cost_won["other_variable"]/10000,2)}]
+        rows += [{"분류":"고정 처리", "항목":COST_LABELS[k], "월 예상(만원)":round(preview.cost_won[k]/10000,2)} for k in COST_KEYS if k != "other"]
+        rows += [{"분류":"고정 처리", "항목":"기타 운영비의 고정 처리분", "월 예상(만원)":round(preview.cost_won["other_fixed"]/10000,2)}]
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        with st.expander("직원 인건비 원본 구성"):
+            st.write(f"고용인 인건비 {segment['costs']['hired_labor']['manwon']/12:,.2f}만원/월 + 가족 종사자 인건비 {segment['costs']['family_labor']['manwon']/12:,.2f}만원/월 (초기값 산정 기준)")
+            st.caption("공식 통계의 원 항목은 별도로 유지합니다. 사용자 수정값은 통합 인건비에 적용됩니다.")
+    if preview.total_variable_pct >= 100:
+        st.warning("총 변동비율이 100% 이상이에요. 매출 증가만으로 고정비를 충당하기 어려울 수 있어요.")
 
     st.markdown('<div class="biz-section">05  사업주 인건비를 어떻게 볼까요?</div>', unsafe_allow_html=True)
     st.toggle("대표자 인건비를 비용에 포함", value=True, key="biz_include_owner",
@@ -147,13 +164,16 @@ with tab_main:
     include_owner = bool(st.session_state["biz_include_owner"])
     sim = simulate(st.session_state["biz_customers"], st.session_state["biz_ticket"],
                    st.session_state["biz_days"], st.session_state["biz_food_pct"],
-                   monthly_costs, include_owner_labor=include_owner)
+                   monthly_costs, include_owner_labor=include_owner,
+                   other_variable_share_pct=variable_share, reference_sales_manwon=reference_sales)
     sim_with_owner = simulate(st.session_state["biz_customers"], st.session_state["biz_ticket"],
-                              st.session_state["biz_days"], st.session_state["biz_food_pct"], monthly_costs)
+                              st.session_state["biz_days"], st.session_state["biz_food_pct"], monthly_costs,
+                              other_variable_share_pct=variable_share, reference_sales_manwon=reference_sales)
     comparison_with_owner = comparison(sim_with_owner, segment)
     sim_before_owner = simulate(st.session_state["biz_customers"], st.session_state["biz_ticket"],
                                 st.session_state["biz_days"], st.session_state["biz_food_pct"],
-                                monthly_costs, include_owner_labor=False)
+                                monthly_costs, include_owner_labor=False,
+                                other_variable_share_pct=variable_share, reference_sales_manwon=reference_sales)
     owncol, beforecol = st.columns(2)
     owncol.metric("대표자 인건비 차감 후 잔여이익", f"{sim_with_owner.profit_won / 10000:,.1f}만원")
     beforecol.metric("대표자 인건비 차감 전 잔여이익", f"{sim_before_owner.profit_won / 10000:,.1f}만원")
@@ -168,14 +188,14 @@ with tab_main:
     with left:
         st.markdown(card("내 예상 월매출", f"{sim.revenue_won / 10000:,.0f}만원", f"업종 평균 {avg['sales']:,.0f}만원 / 월"), unsafe_allow_html=True)
     with right:
-        st.markdown(card("내 예상 월 영업이익" if include_owner else "대표자 인건비 차감 전 잔여금액", f"{sim.profit_won / 10000:,.0f}만원", f"업종 평균 {avg['profit']:,.0f}만원 / 월 (대표자 인건비 포함)", dark=True), unsafe_allow_html=True)
+        st.markdown(card("내 예상 월 손익 (모델 기준)" if include_owner else "대표자 인건비 차감 전 잔여금액", f"{sim.profit_won / 10000:,.0f}만원", f"업종 평균 {avg['profit']:,.0f}만원 / 월 (대표자 인건비 포함)", dark=True), unsafe_allow_html=True)
     k1,k2,k3=st.columns(3)
     k1.metric("예상 영업이익률" if include_owner else "대표자 인건비 차감 전 잔여율", f"{sim.margin_pct:.1f}%" if sim.margin_pct is not None else "계산 불가")
-    k2.metric("손익분기 결제 건수/일", f"{sim.break_even_customers:,}명" if sim.break_even_customers is not None else "도달 불가")
+    k2.metric("손익분기 결제 건수/일", f"{sim.break_even_customers:,}건" if sim.break_even_customers is not None else "도달 불가")
     k3.metric("업종 평균 대비 월 영업이익 차이 (동일 비용 범위)", f"{comparison_with_owner['profit_diff_manwon']:+,.0f}만원", help="대표자 인건비 포함 기준으로만 비교합니다.")
 
     if sim.break_even_customers is None:
-        st.warning("매출에서 식재료비를 제외한 금액으로 고정비를 충당할 수 없어요.")
+        st.warning("매출에서 변동비를 제외한 금액으로 고정비를 충당할 수 없어요.")
     elif st.session_state["biz_customers"] >= sim.break_even_customers:
         st.success(f"현재 조건에서 하루 {sim.break_even_customers:,}건 이상이면 손익분기점을 넘어요.")
     else:
@@ -190,7 +210,7 @@ with tab_main:
         compare_df=pd.DataFrame({
             "구분": ["월매출", "월 영업이익 (대표자 포함)", "영업이익률 (대표자 포함)"],
             "업종 평균": [f"{avg['sales']:,.0f}만원", f"{avg['profit']:,.0f}만원", f"{avg['margin']:.1f}%"],
-            "내 예상": [f"{sim.revenue_won/10000:,.0f}만원", f"{sim_with_owner.profit_won/10000:,.0f}만원", f"{sim_with_owner.margin_pct:.1f}%" if sim_with_owner.margin_pct is not None else "—"],
+            "내 예상": [f"{sim_with_owner.revenue_won/10000:,.0f}만원", f"{sim_with_owner.profit_won/10000:,.0f}만원", f"{sim_with_owner.margin_pct:.1f}%" if sim_with_owner.margin_pct is not None else "—"],
             "차이": [f"{comparison_with_owner['sales_diff_manwon']:+,.0f}만원", f"{comparison_with_owner['profit_diff_manwon']:+,.0f}만원", f"{comparison_with_owner['margin_diff_pp']:+.1f}%p" if comparison_with_owner['margin_diff_pp'] is not None else "—"],
         })
         st.dataframe(compare_df, hide_index=True, use_container_width=True)
@@ -207,11 +227,12 @@ with tab_main:
         for name, count in [("비관",round(st.session_state['biz_customers']*(1-downside/100))),
                             ("현재",st.session_state['biz_customers']),
                             ("낙관",round(st.session_state['biz_customers']*(1+upside/100)))]:
-            rr=simulate(count,st.session_state["biz_ticket"],st.session_state["biz_days"],st.session_state["biz_food_pct"],monthly_costs, include_owner_labor=include_owner)
+            rr=simulate(count,st.session_state["biz_ticket"],st.session_state["biz_days"],st.session_state["biz_food_pct"],monthly_costs, include_owner_labor=include_owner,
+                   other_variable_share_pct=variable_share, reference_sales_manwon=reference_sales)
             scenario_rows.append({"시나리오":name,"결제 건수/일":count,"월매출(만원)":round(rr.revenue_won/10000,1),"월 잔여금액(만원)":round(rr.profit_won/10000,1)})
         st.dataframe(pd.DataFrame(scenario_rows),hide_index=True,use_container_width=True)
 
-    st.markdown('<p class="biz-quiet">모델 주의: 식재료비만 매출 연동 비용으로 처리하고, 인건비·임차료·세금·기타비용을 시뮬레이션 범위 내에서 고정합니다. 실제 운영에서는 결제수수료·배달비·인건비 등이 매출에 따라 변할 수 있으며, 대표자 인건비를 제외한 결과는 엄밀한 영업이익이 아니라 차감 전 잔여금액이며, 실제 현금흐름과 다를 수 있어요. 모든 금액의 부가세 기준을 통일해야 합니다.</p>',unsafe_allow_html=True)
+    st.markdown('<p class="biz-quiet">모델 주의: 식재료비와 사용자가 선택한 기타비용 일부를 매출 연동 비용으로 처리하고, 나머지는 시뮬레이션 범위 내에서 월 정액으로 처리합니다. 실제 운영에서는 결제수수료·배달비·인건비 등이 매출에 따라 변할 수 있으며, 대표자 인건비를 제외한 결과는 엄밀한 영업이익이 아니라 차감 전 잔여금액이며, 실제 현금흐름과 다를 수 있어요. 모든 금액의 부가세 기준을 통일해야 합니다.</p>',unsafe_allow_html=True)
 
 with tab_data:
     st.markdown('<div class="biz-section">공식 통계는 이렇게 조사됐어요</div>',unsafe_allow_html=True)
@@ -243,12 +264,12 @@ with tab_source:
     st.caption(f"제공 방식: {source['delivery']} · 갱신: {source['refresh']}")
     st.link_button("원본 사이트 열기 ↗",source['url'])
     with st.expander("현재 버전의 계산·데이터 원칙"):
-        st.markdown("""- 공식 통계의 **식재료비율**만 매출 연동 비용으로 활용합니다. 전체 변동비율로 해석하지 않습니다.
-- 나머지 공식 연간 비용은 **12개월로 나눠 월 고정비 초기값**으로 전환합니다. 실제로 전부 고정비라는 뜻은 아닙니다.
+        st.markdown("""- 공식 통계의 **식재료비율**을 매출 연동 비용으로 활용하고, **기타 운영비 중 사용자가 고른 비중**을 매출연동으로 재분류합니다. 공식 통계에서 확인된 총변동비율은 아닙니다.
+- 나머지 공식 연간 비용은 **12개월로 나눠 월 초기값**으로 전환하고, 고용인·가족 인건비는 합산합니다. 매출 연동으로 분류한 기타비용은 고정 처리 금액에서 차감해 중복 계산하지 않습니다.
 - **객단가 6,500원 / 월 30일**은 공식 통계가 아닌 편집 가능한 가정입니다. 이 가정과 공식 월평균 매출로 하루 고객 수를 역산합니다.
 - 프랜차이즈·비프랜차이즈는 커피전문점 단독이 아닌 **5622 업종 통계**입니다.
 - 기준자료는 수동으로 검증한 스냅샷입니다. **API 자동 업데이트는 아직 구현하지 않았습니다.**
 - 원본 보고서 인용과 데이터의 상업적 재배포는 별도 이용 조건 확인이 필요합니다.""")
 
 st.divider()
-st.markdown('<p class="biz-quiet">BIZLAB v0.6 · 공식 업종 통계 기반 시뮬레이션 · 초기값은 추정 출발점이며 실제 창업 수익을 보증하지 않습니다.</p>',unsafe_allow_html=True)
+st.markdown('<p class="biz-quiet">BIZLAB v0.7 · 공식 업종 통계 기반 시뮬레이션 · 초기값은 추정 출발점이며 실제 창업 수익을 보증하지 않습니다.</p>',unsafe_allow_html=True)

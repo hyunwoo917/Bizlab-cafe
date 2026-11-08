@@ -1,18 +1,13 @@
-BizLab v0.6 전체 재배포 가이드
+BizLab v0.7 배포 가이드
+======================
+1. ZIP 다운로드 후 압축을 풉니다.
+2. GitHub Desktop > 현재 저장소 Bizlab-cafe > Show in Explorer를 클릭합니다.
+3. 압축을 푼 폴더 안의 app.py, model_v05.py, data, .streamlit 등 파일·폴더를 저장소의 최상위에 복사합니다.
+   * ZIP 파일이나 BizLab_v0_7 상위 폴더 자체를 복사하지 마세요.
+   * .git 디렉터리는 지우거나 덮어쓰지 마세요.
+4. GitHub Desktop Changes에서 변경된 파일을 확인합니다.
+5. Summary: 'Upgrade BizLab to v0.7' > Commit to main > Push origin.
+6. https://bizlab-cafe.streamlit.app/ 에서 Ctrl+Shift+R.
+7. 확인: 개인/프랜차이즈 전환, 인건비 통합, 기타비용 재분류, 대표자 인건비 스위치.
 
-이 폴더 안의 파일과 폴더가 GitHub 저장소의 최상위에 있어야 합니다.
-GitHub 웹의 Upload files는 기존 파일 덮어쓰기가 기대대로 안 될 수 있습니다.
-가장 쉬운 안정적인 방법: GitHub Desktop 사용
-1) GitHub Desktop 설치/로그인 → File > Clone repository → hyunwoo917/Bizlab-cafe
-2) 이 폴더의 전체 내용(.streamlit, data 포함)을 복제한 저장소 폴더에 복사, 기존 파일 덮어쓰기
-3) GitHub Desktop Changes에서 app.py, model_v05.py 등 변경내용 확인
-4) Commit to main → Push origin
-5) 공개 사이트 새로고침 후 05 사업주 인건비 스위치 확인
-
-주의: 이 폴더 자체를 저장소 아래에 넣으면 안 됩니다. app.py는 저장소 루트에 있어야 합니다.
-__pycache__는 GitHub에 올리지 않습니다.
-
-로컬 확인:
-py -m pip install -r requirements.txt
-py -m unittest discover -v
-py -m streamlit run app.py
+참고: '업종 평균으로 다시 설정'을 누르면 직접 수정한 값이 초기값으로 돌아갑니다.
