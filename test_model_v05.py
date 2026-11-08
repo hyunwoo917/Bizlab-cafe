@@ -45,3 +45,23 @@ class TestModel(unittest.TestCase):
         self.assertAlmostEqual(d['sales_diff_manwon'],model.revenue_won/10000-s['annual_sales_manwon']/12)
 
 if __name__=='__main__': unittest.main()
+
+class OwnerLaborToggleTests(unittest.TestCase):
+    def test_owner_exclusion_only_changes_owner_cost(self):
+        costs = {k: 50.0 for k in COST_KEYS}
+        with_owner = simulate(60, 6500, 30, 35.0, costs)
+        without_owner = simulate(60, 6500, 30, 35.0, costs, include_owner_labor=False)
+        self.assertEqual(with_owner.revenue_won, without_owner.revenue_won)
+        self.assertEqual(with_owner.food_won, without_owner.food_won)
+        self.assertAlmostEqual(without_owner.profit_won - with_owner.profit_won, 500000)
+        self.assertLessEqual(without_owner.break_even_customers, with_owner.break_even_customers)
+        self.assertEqual(without_owner.cost_won['owner_labor'], 0)
+
+    def test_all_values_auto_loaded_and_user_can_override(self):
+        seg = load_benchmark()['segments']['independent']
+        inputs = recommended_inputs(seg)
+        self.assertGreater(inputs['owner_labor'], 0)
+        custom = {k: inputs[k] for k in COST_KEYS}
+        custom['owner_labor'] = 0
+        result = simulate(30, 6500, 30, inputs['food_pct'], custom)
+        self.assertEqual(result.cost_won['owner_labor'], 0)

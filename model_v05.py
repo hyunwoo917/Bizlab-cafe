@@ -41,7 +41,7 @@ class Simulation:
 
 
 def simulate(customers: int, ticket: int, days: int, food_pct: float,
-             monthly_costs_manwon: dict) -> Simulation:
+             monthly_costs_manwon: dict, *, include_owner_labor: bool = True) -> Simulation:
     if customers < 0 or ticket < 0 or not 1 <= days <= 31 or not 0 <= food_pct <= 100:
         raise ValueError("Out of-range scenario input")
     if any(v < 0 for v in monthly_costs_manwon.values()):
@@ -50,13 +50,13 @@ def simulate(customers: int, ticket: int, days: int, food_pct: float,
         raise ValueError("Required cost categories missing")
     sales = customers * ticket * days
     food = sales * food_pct / 100
-    fixed = sum(monthly_costs_manwon.values()) * 10000
+    fixed = sum(v for k, v in monthly_costs_manwon.items() if include_owner_labor or k != "owner_labor") * 10000
     profit = sales - food - fixed
     contribution = ticket * days * (1 - food_pct / 100)
     bep = ceil(fixed / contribution - 1e-12) if contribution > 0 else None
     return Simulation(sales, food, fixed, profit,
                       100 * profit / sales if sales else None, bep,
-                      {"food": food, **{k: v * 10000 for k, v in monthly_costs_manwon.items()}})
+                      {"food": food, **{k: (v * 10000 if include_owner_labor or k != "owner_labor" else 0.0) for k, v in monthly_costs_manwon.items()}})
 
 
 def benchmark_monthly(segment: dict) -> dict:
